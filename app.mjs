@@ -166,7 +166,7 @@ function activityScreen(activity) {
     <div class="metrics detail-metrics">${metric('Средний темп', pace(activity.averagePace), '/км')}${metric('Время', duration(activity.seconds))}${metric('Калории ≈', number(activity.calories), 'ккал')}${metric('Шаги ≈', number(activity.steps))}${metric('Частота ≈', number(activity.steps * 60 / activity.seconds), 'шаг/мин')}${metric('Скорость', number(activity.meters / activity.seconds * 3.6, 1), 'км/ч')}</div>
   </div></section>
   <section class="panel splits">${heading('Отрезки', '<span class="muted">Темп / км</span>')}<div class="split-list">${activity.splits.map((split, index) => `<div class="split"><span>${split.meters >= 999.9 ? `${index + 1} км` : `${number(split.meters / 1000, 2)} км`}</span><div class="split-track"><i style="--bar:${Math.max(8, splitPaces[index] / slowest * 100)}%"></i></div><strong>${pace(splitPaces[index])}</strong></div>`).join('')}</div></section>
-  ${detailChart(activity)}<p class="source-note">${({manual:'Маршрут внесён вручную. Показатели рассчитаны.',gps:'Маршрут записан по GPS. Шаги и калории оценены.'})[activity.source]}</p>`;
+  ${detailChart(activity)}`;
 }
 
 function kinds(selected, action) {

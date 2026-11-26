@@ -72,7 +72,7 @@ main { padding: 17px var(--page-x) calc(var(--nav-height) + env(safe-area-inset-
 .section-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 28px; }
 .text-link { min-height: 34px; display: inline-flex; align-items: center; font-size: 13px; font-weight: 620; }
 .text-link:hover { text-decoration: underline; }
-.muted, .helper, .source-note { color: var(--muted); font-size: 12px; }
+.muted, .helper { color: var(--muted); font-size: 12px; }
 
 .tabs { position: fixed; z-index: 550; bottom: 0; inset-inline: 0; width: 100%; max-width: var(--max-width); margin-inline: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); min-height: calc(var(--nav-height) + env(safe-area-inset-bottom)); padding: 6px 9px max(6px, env(safe-area-inset-bottom)); background: var(--panel-deep); border: 1px solid var(--line-soft); border-bottom: 0; }
 .tabs a { display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; gap: 3px; min-height: 48px; border-radius: 10px; touch-action: manipulation; }
@@ -181,7 +181,6 @@ main { padding: 17px var(--page-x) calc(var(--nav-height) + env(safe-area-inset-
 .graph-fill { fill: var(--chart-fill); }
 .graph-line { fill: none; stroke: var(--accent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .graph-labels { color: var(--quiet); margin: 4px 0 0 33px; font-size: 11px; display: flex; justify-content: space-between; }
-.source-note { padding: 2px 1px; }
 
 .gps-performance, .compose-fields, .settings { padding: 13px 12px; }
 .gps-performance .detail-metrics { border: 0; padding-top: 0; margin-bottom: 11px; }

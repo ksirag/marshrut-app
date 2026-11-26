@@ -1,4 +1,4 @@
-const cacheName = 'marshrut-shell-v6';
+const cacheName = 'marshrut-shell-v7';
 const shell = [
   './', './index.html', './styles.css', './app.mjs', './activity.mjs', './maps.mjs',
   './icons.svg', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
