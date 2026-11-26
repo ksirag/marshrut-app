@@ -1,4 +1,4 @@
-const cacheName = 'marshrut-shell-v5';
+const cacheName = 'marshrut-shell-v6';
 const shell = [
   './', './index.html', './styles.css', './app.mjs', './activity.mjs', './maps.mjs',
   './icons.svg', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
@@ -6,7 +6,8 @@ const shell = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)).then(() => self.skipWaiting()));
+  const requests = shell.map(path => new Request(new URL(path, self.location.href), {cache: 'reload'}));
+  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(requests)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {

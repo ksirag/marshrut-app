@@ -13,8 +13,6 @@ const dayFormat = new Intl.DateTimeFormat('ru-RU', {day: 'numeric', month: 'long
 const dateFormat = new Intl.DateTimeFormat('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
 const timeFormat = new Intl.DateTimeFormat('ru-RU', {hour: '2-digit', minute: '2-digit'});
 const weekday = new Intl.DateTimeFormat('ru-RU', {weekday: 'short'});
-const sample = buildActivity({id: 'example', kind: 'walk', source: 'demo', startedAt: '2026-11-21T11:42:00', targetPace: 649,
-  points: [[56.8407,60.6047],[56.8399,60.6067],[56.8394,60.6078],[56.8386,60.6087],[56.8379,60.6075],[56.8373,60.6082],[56.8363,60.6101],[56.8357,60.6111],[56.8368,60.6134],[56.8372,60.6139],[56.8382,60.6124],[56.8388,60.6118],[56.8392,60.6124],[56.8399,60.6135],[56.8408,60.6129]]});
 
 function load() {
   try {
@@ -108,7 +106,7 @@ function bars(data, field = 'steps') {
 
 function activityCard(activity, compact = false) {
   return `<a class="activity-card ${compact ? 'compact' : ''}" href="#activity/${activity.id}">
-    <div class="activity-head"><span class="activity-icon">${icon(activity.kind)}</span><div><strong>${activity.source === 'demo' ? 'Пример тренировки' : kindName[activity.kind]}</strong><span>${dateText(activity.startedAt)}</span></div><span class="chevron">${icon('arrow')}</span></div>
+    <div class="activity-head"><span class="activity-icon">${icon(activity.kind)}</span><div><strong>${kindName[activity.kind]}</strong><span>${dateText(activity.startedAt)}</span></div><span class="chevron">${icon('arrow')}</span></div>
     ${routeThumbnail(activity.points)}
     <div class="metrics card-metrics">${metric('Дистанция', number(activity.meters / 1000, 2), 'км')}${metric('Время', duration(activity.seconds))}${metric('Шаги ≈', number(activity.steps))}</div>
   </a>`;
@@ -117,12 +115,12 @@ function activityCard(activity, compact = false) {
 function todayScreen() {
   const totals = sumActivities(journal.activities.filter(a => todayKey(a.startedAt) === todayKey()));
   const progress = Math.min(100, Math.round(totals.steps / journal.goal * 100));
-  const activity = journal.activities[0] || sample;
+  const activity = journal.activities[0];
   return `<div class="page-head"><h1>Сегодня</h1><span>${icon('calendar')}${dayFormat.format(new Date())}</span></div>
   <section class="panel daily"><div class="metrics daily-metrics">${metric('Калории ≈', number(totals.calories), 'ккал')}${metric('В движении', duration(totals.seconds).replace(/^00:/, ''))}${metric('Дистанция', number(totals.meters / 1000, 2), 'км')}</div>
   <div class="step-ring" aria-label="${progress}% дневной цели"><svg viewBox="0 0 220 220" aria-hidden="true"><circle class="ring-ticks" cx="110" cy="110" r="100"/><circle class="ring-track" cx="110" cy="110" r="88" pathLength="100"/>${progress ? `<circle class="ring-progress" cx="110" cy="110" r="88" pathLength="100" style="--progress:${progress}"/>` : ''}</svg><div class="ring-text"><span>Шаги ≈</span><strong>${number(totals.steps)}</strong><span>Цель ${number(journal.goal)}</span></div></div></section>
   <section class="panel week">${heading('Последние 7 дней', '<a class="text-link" href="#stats">Статистика</a>')}${bars(days(7))}</section>
-  <section class="activity-section">${heading(journal.activities.length ? 'Последняя тренировка' : 'Маршрут в журнале', '<a class="text-link" href="#journal">Журнал</a>')}${activityCard(activity, true)}</section>`;
+  ${activity ? `<section class="activity-section">${heading('Последняя тренировка', '<a class="text-link" href="#journal">Журнал</a>')}${activityCard(activity, true)}</section>` : ''}`;
 }
 
 function statsScreen() {
@@ -139,7 +137,7 @@ function journalScreen() {
   const entries = filtered.length ? filtered.map(activity => activityCard(activity)).join('') : `<div class="empty panel">${icon('journal')}<strong>${journal.activities.length ? 'Нет тренировок этого типа' : 'История пока пуста'}</strong><a class="text-link" href="#gps">Начать тренировку</a></div>`;
   return `<div class="page-head"><h1>Журнал</h1><span>${number(journal.activities.length)} ${({one:'тренировка',few:'тренировки',many:'тренировок'})[plural.select(journal.activities.length)]}</span></div>
   <div class="segments" aria-label="Тип тренировки">${Object.entries({all:'Все', ...kindName}).map(([key, name]) => `<button type="button" data-filter="${key}" aria-pressed="${journalFilter === key}">${name}</button>`).join('')}</div>
-  <div class="journal-list">${entries}${!journal.activities.length && (journalFilter === 'all' || journalFilter === sample.kind) ? activityCard(sample) : ''}</div>`;
+  <div class="journal-list">${entries}</div>`;
 }
 
 function detailChart(activity) {
@@ -163,12 +161,12 @@ function activityScreen(activity) {
   const splitPaces = activity.splits.map(split => split.seconds * 1000 / split.meters);
   const slowest = Math.max(...splitPaces, 1);
   return `<section class="panel activity-detail"><div id="map" class="map activity-map" aria-label="Карта тренировки"></div><div class="detail-summary">
-    <div class="activity-meta"><span>${icon(activity.kind)}${activity.source === 'demo' ? 'Пример тренировки' : kindName[activity.kind]}</span><span>${dateText(activity.startedAt)}</span></div>
+    <div class="activity-meta"><span>${icon(activity.kind)}${kindName[activity.kind]}</span><span>${dateText(activity.startedAt)}</span></div>
     <div class="main-distance">${number(activity.meters / 1000, 2)} <small>км</small></div>
     <div class="metrics detail-metrics">${metric('Средний темп', pace(activity.averagePace), '/км')}${metric('Время', duration(activity.seconds))}${metric('Калории ≈', number(activity.calories), 'ккал')}${metric('Шаги ≈', number(activity.steps))}${metric('Частота ≈', number(activity.steps * 60 / activity.seconds), 'шаг/мин')}${metric('Скорость', number(activity.meters / activity.seconds * 3.6, 1), 'км/ч')}</div>
   </div></section>
   <section class="panel splits">${heading('Отрезки', '<span class="muted">Темп / км</span>')}<div class="split-list">${activity.splits.map((split, index) => `<div class="split"><span>${split.meters >= 999.9 ? `${index + 1} км` : `${number(split.meters / 1000, 2)} км`}</span><div class="split-track"><i style="--bar:${Math.max(8, splitPaces[index] / slowest * 100)}%"></i></div><strong>${pace(splitPaces[index])}</strong></div>`).join('')}</div></section>
-  ${detailChart(activity)}<p class="source-note">${({manual:'Маршрут внесён вручную. Показатели рассчитаны.',gps:'Маршрут записан по GPS. Шаги и калории оценены.',demo:'Демонстрационная тренировка.'})[activity.source]}</p>`;
+  ${detailChart(activity)}<p class="source-note">${({manual:'Маршрут внесён вручную. Показатели рассчитаны.',gps:'Маршрут записан по GPS. Шаги и калории оценены.'})[activity.source]}</p>`;
 }
 
 function kinds(selected, action) {
@@ -230,8 +228,8 @@ function render(keepPosition = false) {
     map = openMap(document.querySelector('#map'), {...placement, onPoint: addPoint});
     refreshDraft();
   } else if (screen === 'activity') {
-    const activity = id === sample.id ? sample : journal.activities.find(a => a.id === id);
-    header.innerHTML = back('Тренировка', 'journal', activity && activity.source !== 'demo' ? control('more', 'Действия с тренировкой', 'activity-menu') : '');
+    const activity = journal.activities.find(a => a.id === id);
+    header.innerHTML = back('Тренировка', 'journal', activity ? control('more', 'Действия с тренировкой', 'activity-menu') : '');
     header.classList.add('subpage');
     content.innerHTML = activity ? activityScreen(activity) : '<div class="empty panel"><strong>Тренировка не найдена</strong><a href="#journal">Открыть журнал</a></div>';
     if (activity) map = openMap(document.querySelector('#map'), {points: activity.points});
