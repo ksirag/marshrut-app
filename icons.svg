@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="mark" viewBox="0 0 24 24"><path d="M4.5 18.5 8.6 7l5.3 10 4.6-11.5"/><circle cx="4.5" cy="18.5" r="1.6"/><circle cx="18.5" cy="5.5" r="1.6"/></symbol>
+  <symbol id="shoe" viewBox="0 0 24 24"><path d="M4 7v8.5c0 1.7 1.3 3 3 3h11a2 2 0 0 0 .7-3.9l-4.2-1.7a4 4 0 0 1-2-1.8L10 6.5 7 9zM4 15.5h13M12 10l-2 1m4 .8-2 1"/></symbol>
+  <symbol id="chart" viewBox="0 0 24 24"><path d="M4 19.5h16M6 16v-4m4 4V6m4 10V9m4 7V4"/></symbol>
+  <symbol id="gps" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2.5V5m0 14v2.5M2.5 12H5m14 0h2.5"/></symbol>
+  <symbol id="journal" viewBox="0 0 24 24"><rect x="4.5" y="4" width="15" height="16" rx="2"/><path d="M8 8.5h8m-8 3.5h8m-8 3.5h4"/></symbol>
+  <symbol id="settings" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="calendar" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M8 4v4m8-4v4M4 11h16"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol>
+  <symbol id="walk" viewBox="0 0 24 24"><circle cx="13.5" cy="4.5" r="2"/><path d="m7 12 3-3 3-.5 2 4 4 .5m-7-3-1.5 5.5L7 20m3.5-4.5 4 1L17 21"/></symbol>
+  <symbol id="run" viewBox="0 0 24 24"><circle cx="15.5" cy="4.5" r="2"/><path d="m7 10 4-2 3 1 3 4h3M13.5 10 11 15l4 2 1 4M11 14.5l-2 4H4"/></symbol>
+  <symbol id="locate" viewBox="0 0 24 24"><path d="m3 11 17-7-7 17-2.5-7.5z"/></symbol>
+  <symbol id="undo" viewBox="0 0 24 24"><path d="M8 5 4 9l4 4M4 9h10a5 5 0 0 1 0 10h-3"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="play" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z"/></symbol>
+  <symbol id="stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="pin" viewBox="0 0 24 24"><path d="M19 10c0 5-7 10-7 10s-7-5-7-10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/></symbol>
+</svg>
