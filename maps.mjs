@@ -29,6 +29,9 @@ export function openMap(element, options = {}) {
     zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, inertia: false,
   });
   map.attributionControl.setPrefix(false);
+  if (options.onPoint) {
+    map.attributionControl.addAttribution('<a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">Маршруты: FOSSGIS</a> | <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Исправить карту</a>');
+  }
   map.setView(options.center || defaultCenter, options.zoom || 14);
   const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -51,26 +54,29 @@ export function openMap(element, options = {}) {
     if (!loaded) element.classList.add('tiles-unavailable');
   });
   if (options.controls !== false) L.control.zoom({position: 'topright', zoomInTitle: 'Приблизить', zoomOutTitle: 'Отдалить'}).addTo(map);
-  if (options.onPoint) map.on('click', event => options.onPoint([event.latlng.lat, event.latlng.lng]));
+  if (options.onPoint) map.on('click', event => {
+    const {lat, lng} = event.latlng.wrap();
+    options.onPoint([lat, lng]);
+  });
   const layers = L.layerGroup().addTo(map);
 
-  function draw(points, fit = false) {
+  function draw(points, {fit = false, markers = points} = {}) {
     layers.clearLayers();
-    if (!points.length) return;
-    const line = L.polyline(points, {weight: 8, color: color('--map-halo'), interactive: false}).addTo(layers);
-    L.polyline(points, {weight: 4, color: color('--accent'), interactive: false}).addTo(layers);
+    if (points.length > 1) {
+      const line = L.polyline(points, {weight: 8, color: color('--map-halo'), interactive: false}).addTo(layers);
+      L.polyline(points, {weight: 4, color: color('--accent'), interactive: false}).addTo(layers);
+      if (fit) map.fitBounds(line.getBounds(), {padding: [32, 28], maxZoom: 17, animate: false});
+    } else if (fit && points.length) map.setView(points[0], 16);
+    if (!markers.length) return;
     if (options.onPoint) {
-      for (const point of points.slice(1, -1)) L.circleMarker(point, {radius: 3, weight: 1, color: color('--white'), fillColor: color('--accent'), fillOpacity: 1, interactive: false}).addTo(layers);
+      for (const point of markers.slice(1, -1)) L.circleMarker(point, {radius: 3, weight: 1, color: color('--white'), fillColor: color('--accent'), fillOpacity: 1, interactive: false}).addTo(layers);
     }
     const marker = {radius: 5, weight: 2, color: color('--white'), fillOpacity: 1, interactive: false};
-    L.circleMarker(points[0], {...marker, fillColor: color('--success')}).addTo(layers);
-    if (points.length > 1 && line.getBounds().isValid()) {
-      L.circleMarker(points.at(-1), {...marker, fillColor: color('--accent')}).addTo(layers);
-      if (fit) map.fitBounds(line.getBounds(), {padding: [32, 28], maxZoom: 17, animate: false});
-    } else if (fit) map.setView(points[0], 16);
+    L.circleMarker(markers[0], {...marker, fillColor: color('--success')}).addTo(layers);
+    if (markers.length > 1) L.circleMarker(markers.at(-1), {...marker, fillColor: color('--accent')}).addTo(layers);
   }
 
-  if (options.points) draw(options.points, true);
+  if (options.points) draw(options.points, {fit: true});
   return {
     draw,
     move: (point, zoom = 16) => map.setView(point, zoom, {animate: false}),

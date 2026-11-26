@@ -1,5 +1,6 @@
 import {buildActivity, distance, duration, number, pace, parsePace, routeDistance} from './activity.mjs';
 import {defaultCenter, openMap, routeThumbnail} from './maps.mjs';
+import {fetchWalkingRoute} from './routing.mjs';
 
 const content = document.querySelector('#content');
 const header = document.querySelector('#top');
@@ -35,6 +36,9 @@ let journalFilter = 'all';
 let statsPeriod = 7;
 let placement;
 let lastView;
+let routeTimer;
+let routeRequest;
+let lastRouteRequest = 0;
 
 function commit(next) {
   try {
@@ -184,7 +188,8 @@ function gpsScreen() {
 
 function manualScreen() {
   return `<form id="manual-form"><section class="panel compose-map"><div id="map" class="map draft-map" aria-label="Карта для добавления точек"></div>
-  <div class="map-tools">${control('locate', 'Моё местоположение', 'locate')}</div><div class="compose-tools"><div><strong id="draft-distance">0,00 км</strong><span id="point-count">Нажмите на карту, чтобы добавить точку</span></div>${control('undo', 'Убрать последнюю точку', 'undo')}${control('pin', 'Перейти к координатам', 'coords')}</div>
+  <div class="map-tools">${control('locate', 'Моё местоположение', 'locate')}</div><div class="compose-tools"><div><strong id="draft-distance">—</strong><span id="point-count"></span></div>${control('undo', 'Убрать последнюю точку', 'undo')}${control('pin', 'Перейти к координатам', 'coords')}</div>
+  <div class="route-status" id="route-status" hidden><span id="route-message" role="status"></span><button type="button" class="secondary" data-action="retry-route" hidden>Повторить</button></div>
   <div class="coords" id="coords" hidden><label for="coordinate">Координаты центра карты</label><div><input id="coordinate" placeholder="56.8391, 60.6135" autocomplete="off"><button type="button" class="secondary" data-action="move">Перейти</button></div></div></section>
   <section class="panel compose-fields">${kinds(draft.kind, 'draft-kind')}<div class="field-grid"><label>Дата<input name="date" type="date" required></label><label>Время старта<input name="time" type="time" required></label><label>Примерный темп<input name="pace" type="text" required placeholder="10:30" autocomplete="off" aria-describedby="pace-hint"></label></div>
   <p class="helper" id="pace-hint">Темп в минутах и секундах на километр</p><p class="form-error" id="manual-error" role="alert" hidden></p><button type="submit" class="primary">Сохранить тренировку</button></section></form>`;
@@ -198,7 +203,7 @@ function settingsScreen() {
 
 function newDraft() {
   const now = new Date();
-  return {points: [], kind: gpsKind, date: todayKey(now), time: timeFormat.format(now), pace: gpsKind === 'walk' ? '10:30' : '6:00'};
+  return {points: [], route: null, routeState: 'idle', kind: gpsKind, date: todayKey(now), time: timeFormat.format(now), pace: gpsKind === 'walk' ? '10:30' : '6:00'};
 }
 
 function currentScreen() {
@@ -254,19 +259,72 @@ function render(keepPosition = false) {
 }
 
 function addPoint(point) {
-  if (draft.points.length >= 2500) return toast('В одном маршруте можно поставить до 2500 точек.');
+  if (draft.points.length >= 50) return toast('В одном маршруте можно поставить до 50 точек.');
   if (draft.points.length && distance(draft.points.at(-1), point) < 2) return;
   draft.points.push(point);
-  refreshDraft();
+  planRoute();
 }
 
 function refreshDraft() {
+  const form = document.querySelector('#manual-form');
+  if (!form) return;
   const count = draft.points.length;
-  map?.draw(draft.points, count > 0 && !placement && lastView !== 'manual');
-  document.querySelector('#draft-distance').textContent = `${number(routeDistance(draft.points) / 1000, 2)} км`;
+  const route = draft.route;
+  map?.draw(route?.points || [], {markers: draft.points});
+  document.querySelector('#draft-distance').textContent = route ? `${number(route.meters / 1000, 2)} км` : '—';
   document.querySelector('#point-count').textContent = count ? `${count} ${({one:'точка',few:'точки',many:'точек'})[plural.select(count)]}` : 'Нажмите на карту, чтобы добавить точку';
   document.querySelector('[data-action="undo"]').disabled = !count;
+  form.querySelector('[type="submit"]').disabled = !route;
+  const messages = {
+    loading: 'Строим пешеходный маршрут…',
+    unreachable: 'Не удалось найти путь между точками. Поставьте точки ближе к пешеходной дорожке.',
+    short: 'Путь короче 10 м. Добавьте ещё точку.',
+    error: 'Сервис прокладки недоступен. Проверьте интернет и повторите попытку.',
+  };
+  document.querySelector('#route-status').hidden = !messages[draft.routeState];
+  document.querySelector('#route-message').textContent = messages[draft.routeState] || '';
+  document.querySelector('[data-action="retry-route"]').hidden = draft.routeState !== 'error';
+}
+
+function planRoute() {
+  clearTimeout(routeTimer);
+  routeRequest?.abort();
+  routeRequest = null;
+  const currentDraft = draft;
+  const points = draft.points.slice();
+  draft.route = null;
+  draft.routeState = points.length < 2 ? 'idle' : 'loading';
   document.querySelector('#manual-error').hidden = true;
+  refreshDraft();
+  if (points.length < 2) return;
+
+  // Debounce point edits and leave at least a second between public routing requests.
+  routeTimer = setTimeout(async () => {
+    const request = new AbortController();
+    routeRequest = request;
+    lastRouteRequest = Date.now();
+    const timeout = setTimeout(() => request.abort(), 12000);
+    try {
+      const path = await fetchWalkingRoute(points, request.signal);
+      if (routeRequest !== request) return;
+      const meters = path ? routeDistance(path) : 0;
+      if (!path) currentDraft.routeState = 'unreachable';
+      else if (meters < 10) currentDraft.routeState = 'short';
+      else {
+        currentDraft.route = {points: path, meters};
+        currentDraft.routeState = 'ready';
+      }
+    } catch {
+      if (routeRequest !== request) return;
+      currentDraft.routeState = 'error';
+    } finally {
+      clearTimeout(timeout);
+      if (routeRequest === request) {
+        routeRequest = null;
+        refreshDraft();
+      }
+    }
+  }, Math.max(500, lastRouteRequest + 1100 - Date.now()));
 }
 
 function showError(message, field) {
@@ -471,7 +529,8 @@ document.addEventListener('click', event => {
     case 'locate': locate(); break;
     case 'start': startGPS(); break;
     case 'stop': finishGPS(); break;
-    case 'undo': draft.points.pop(); refreshDraft(); break;
+    case 'undo': draft.points.pop(); planRoute(); break;
+    case 'retry-route': planRoute(); break;
     case 'coords': {
       const row = document.querySelector('#coords');
       row.hidden = !row.hidden;
@@ -519,13 +578,13 @@ document.addEventListener('submit', event => {
   const form = event.target;
   event.preventDefault();
   if (form.id === 'manual-form') {
+    if (!draft.route) return;
     const values = new FormData(form);
     const targetPace = parsePace(String(values.get('pace')));
     if (!targetPace) return showError('Введите темп в формате 10:30, от 2:00 до 60:00 мин/км.', form.elements.pace);
-    if (routeDistance(draft.points) < 10) return showError('Добавьте на карту маршрут длиной хотя бы 10 м.');
     const start = new Date(`${values.get('date')}T${values.get('time')}`);
     if (!Number.isFinite(start.getTime()) || start.getTime() > Date.now()) return showError('Укажите дату и время в прошлом или настоящем.', form.elements.date);
-    const activity = buildActivity({points: draft.points.slice(), kind: draft.kind, source: 'manual', startedAt: start.toISOString(), targetPace});
+    const activity = buildActivity({points: draft.route.points, kind: draft.kind, source: 'manual', startedAt: start.toISOString(), targetPace});
     if (!appendActivity(activity)) return;
     draft = null;
     placement = null;
