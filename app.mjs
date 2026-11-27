@@ -1,6 +1,7 @@
 import {buildActivity, distance, duration, number, pace, parsePace, routeDistance} from './activity.mjs';
-import {defaultCenter, openMap, routeThumbnail} from './maps.mjs';
+import {defaultCenter, mapAttribution, observePreviews, openMap, routeThumbnail} from './maps.mjs';
 import {fetchWalkingRoute} from './routing.mjs';
+import {loadElevation} from './elevation.mjs';
 
 const content = document.querySelector('#content');
 const header = document.querySelector('#top');
@@ -26,6 +27,9 @@ function load() {
 
 let journal = load();
 let map;
+let stopPreviews;
+let elevationRequest;
+const elevations = new Map();
 let draft;
 let recording;
 let timer;
@@ -109,11 +113,11 @@ function bars(data, field = 'steps') {
 }
 
 function activityCard(activity, compact = false) {
-  return `<a class="activity-card ${compact ? 'compact' : ''}" href="#activity/${activity.id}">
+  return `<article class="activity-card ${compact ? 'compact' : ''}"><a class="activity-link" href="#activity/${activity.id}">
     <div class="activity-head"><span class="activity-icon">${icon(activity.kind)}</span><div><strong>${kindName[activity.kind]}</strong><span>${dateText(activity.startedAt)}</span></div><span class="chevron">${icon('arrow')}</span></div>
-    ${routeThumbnail(activity.points)}
+    <div class="map preview-map" data-map-preview="${activity.id}" aria-label="Карта маршрута">${routeThumbnail(activity.points)}</div>
     <div class="metrics card-metrics">${metric('Дистанция', number(activity.meters / 1000, 2), 'км')}${metric('Время', duration(activity.seconds))}${metric('Шаги ≈', number(activity.steps))}</div>
-  </a>`;
+  </a><div class="preview-attribution">${mapAttribution}</div></article>`;
 }
 
 function todayScreen() {
@@ -144,33 +148,66 @@ function journalScreen() {
   <div class="journal-list">${entries}</div>`;
 }
 
-function detailChart(activity) {
-  const stride = activity.meters / Math.max(1, activity.steps);
-  const raw = activity.samples.slice(1).map((point, index) => {
-    const previous = activity.samples[index];
-    return Math.min(260, 60 * (point.meters - previous.meters) / Math.max(0.1, point.seconds - previous.seconds) / stride);
-  });
-  if (raw.length < 2) return '';
-  const average = activity.steps * 60 / activity.seconds;
-  const lower = Math.max(0, Math.floor((Math.min(...raw) - 6) / 10) * 10);
-  const upper = Math.ceil((Math.max(...raw) + 6) / 10) * 10;
-  const series = raw.map((value, index) => `${(index * 310 / (raw.length - 1)).toFixed(1)},${(86 - (value - lower) / (upper - lower) * 76).toFixed(1)}`).join(' ');
-  return `<section class="panel detail-chart">${heading('Частота шагов ≈', `<span class="muted">В среднем ${number(average)} шаг/мин</span>`)}
-    <div class="graph"><div class="graph-scale"><span>${upper}</span><span>${lower}</span></div><svg viewBox="0 0 310 90" preserveAspectRatio="none" role="img" aria-label="Расчётная частота шагов по дистанции"><polygon points="0,90 ${series} 310,90" class="graph-fill"/><polyline points="${series}" class="graph-line"/></svg></div>
-    <div class="graph-labels"><span>0 км</span><span>${number(activity.meters / 2000, 2)} км</span><span>${number(activity.meters / 1000, 2)} км</span></div>
+function workoutChart(title, summary, points, meters, id, source = '') {
+  if (points.length < 2 || !points.every(point => Number.isFinite(point.value))) return '';
+  const values = points.map(point => point.value);
+  const step = Math.max(1, Math.ceil((Math.max(...values) - Math.min(...values)) / 3));
+  const lower = Math.floor(Math.min(...values));
+  const upper = lower + 3 * (step + 1);
+  const series = points.map(point => [Math.min(310, 310 * point.meters / meters).toFixed(2), (112 - (point.value - lower) * 104 / (upper - lower)).toFixed(2)]);
+  const line = series.map(point => point.join(',')).join(' ');
+  const divisions = meters >= 800 ? 4 : 2;
+  return `<section class="panel detail-chart">${heading(title, `<span class="muted">${summary}</span>`)}
+    <div class="graph"><div class="graph-scale" aria-hidden="true">${[3,2,1,0].map(index => `<span>${number(lower + index * (step + 1))}</span>`).join('')}</div>
+    <svg viewBox="0 0 310 120" preserveAspectRatio="none" role="img" aria-label="${title} по дистанции"><defs><linearGradient id="${id}" x2="0" y2="1"><stop offset="0" class="graph-stop"/><stop offset="1" class="graph-stop graph-stop-end"/></linearGradient></defs><polygon points="${series[0][0]},120 ${line} ${series.at(-1)[0]},120" fill="url(#${id})"/><polyline points="${line}" class="graph-line"/></svg></div>
+    <div class="graph-labels"><span>0 км</span>${Array.from({length: divisions}, (_, index) => `<span>${number(meters * (index + 1) / (1000 * divisions), meters < 1000 ? 2 : 1)}</span>`).join('')}</div>${source}
   </section>`;
+}
+
+function cadenceChart(activity) {
+  const stride = activity.meters / Math.max(1, activity.steps);
+  const points = activity.samples.slice(1).map((point, index) => {
+    const previous = activity.samples[index];
+    return {meters: (point.meters + previous.meters) / 2,
+      value: Math.min(260, 60 * (point.meters - previous.meters) / Math.max(0.1, point.seconds - previous.seconds) / stride)};
+  });
+  if (points.length) points.unshift({...points[0], meters: 0});
+  if (points.length) points.push({...points.at(-1), meters: activity.meters});
+  return workoutChart('Частота шагов ≈', `Средняя ${number(activity.steps * 60 / activity.seconds)} шаг/мин`, points, activity.meters, 'cadence-fill');
+}
+
+async function showElevation(activity, target) {
+  let profile = elevations.get(activity.id);
+  if (!profile) {
+    const request = new AbortController();
+    elevationRequest = request;
+    const timeout = setTimeout(() => request.abort(), 6000);
+    try {
+      profile = await loadElevation(activity.points, request.signal);
+      if (profile) elevations.set(activity.id, profile);
+    } catch { /* The workout remains readable when the terrain service is unavailable. */ }
+    finally { clearTimeout(timeout); }
+  }
+  if (!target.isConnected) return;
+  const source = '<p class="chart-source">Рельеф по карте · <a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo / Copernicus DEM</a></p>';
+  if (profile) {
+    const climb = profile.reduce((sum, point, index) => index ? sum + Math.max(0, point.value - profile[index - 1].value) : 0, 0);
+    target.innerHTML = workoutChart('Высота', `Набор ≈ ${number(climb)} м`, profile, activity.meters, 'elevation-fill', source);
+    document.querySelector('#workout-climb').textContent = `${number(climb)} м`;
+  }
 }
 
 function activityScreen(activity) {
   const splitPaces = activity.splits.map(split => split.seconds * 1000 / split.meters);
   const slowest = Math.max(...splitPaces, 1);
-  return `<section class="panel activity-detail"><div id="map" class="map activity-map" aria-label="Карта тренировки"></div><div class="detail-summary">
-    <div class="activity-meta"><span>${icon(activity.kind)}${kindName[activity.kind]}</span><span>${dateText(activity.startedAt)}</span></div>
+  return `<div class="workout-report"><div class="workout-map-wrap"><div id="map" class="map activity-map" aria-label="Карта тренировки"></div>${control('gps', 'Показать весь маршрут', 'fit-workout')}</div>
+  <section class="panel detail-summary"><div class="activity-meta"><span>${icon(activity.kind)}${kindName[activity.kind]}</span><time>${dateText(activity.startedAt)}</time></div>
     <div class="main-distance">${number(activity.meters / 1000, 2)} <small>км</small></div>
-    <div class="metrics detail-metrics">${metric('Средний темп', pace(activity.averagePace), '/км')}${metric('Время', duration(activity.seconds))}${metric('Калории ≈', number(activity.calories), 'ккал')}${metric('Шаги ≈', number(activity.steps))}${metric('Частота ≈', number(activity.steps * 60 / activity.seconds), 'шаг/мин')}${metric('Скорость', number(activity.meters / activity.seconds * 3.6, 1), 'км/ч')}</div>
-  </div></section>
+    ${activity.samples.length > 2 ? '<div class="speed-key"><span>Медленнее</span><i aria-hidden="true"></i><span>Быстрее</span></div>' : ''}
+    <div class="metrics detail-metrics">${metric('Средний темп', pace(activity.averagePace), '/км')}${metric('Длительность', duration(activity.seconds).replace(/^00:/, ''))}${metric('Калории ≈', number(activity.calories), 'ккал')}${metric('Шаги ≈', number(activity.steps))}${metric('Набор высоты ≈', '<span id="workout-climb">—</span>')}${metric('Скорость', number(activity.meters / activity.seconds * 3.6, 1), 'км/ч')}</div>
+  </section>
   <section class="panel splits">${heading('Отрезки', '<span class="muted">Темп / км</span>')}<div class="split-list">${activity.splits.map((split, index) => `<div class="split"><span>${split.meters >= 999.9 ? `${index + 1} км` : `${number(split.meters / 1000, 2)} км`}</span><div class="split-track"><i style="--bar:${Math.max(8, splitPaces[index] / slowest * 100)}%"></i></div><strong>${pace(splitPaces[index])}</strong></div>`).join('')}</div></section>
-  ${detailChart(activity)}`;
+  ${cadenceChart(activity)}<div id="workout-elevation"></div></div>`;
 }
 
 function kinds(selected, action) {
@@ -214,6 +251,9 @@ function render(keepPosition = false) {
   const view = currentScreen();
   const [screen, id] = view.split('/');
   if (lastView === 'manual' && draft && map) placement = {center: map.center(), zoom: map.zoom()};
+  stopPreviews?.();
+  stopPreviews = null;
+  elevationRequest?.abort();
   map?.remove();
   map = null;
   header.innerHTML = mainHeader;
@@ -234,10 +274,13 @@ function render(keepPosition = false) {
     refreshDraft();
   } else if (screen === 'activity') {
     const activity = journal.activities.find(a => a.id === id);
-    header.innerHTML = back('Тренировка', 'journal', activity ? control('more', 'Действия с тренировкой', 'activity-menu') : '');
+    header.innerHTML = back(activity ? kindName[activity.kind] : 'Тренировка', 'journal', activity ? control('more', 'Действия с тренировкой', 'activity-menu') : '');
     header.classList.add('subpage');
     content.innerHTML = activity ? activityScreen(activity) : '<div class="empty panel"><strong>Тренировка не найдена</strong><a href="#journal">Открыть журнал</a></div>';
-    if (activity) map = openMap(document.querySelector('#map'), {points: activity.points});
+    if (activity) {
+      map = openMap(document.querySelector('#map'), {points: activity.points, samples: activity.samples, averagePace: activity.averagePace});
+      void showElevation(activity, document.querySelector('#workout-elevation'));
+    }
   } else if (screen === 'gps') {
     content.innerHTML = gpsScreen();
     const points = recording?.points || [];
@@ -246,6 +289,7 @@ function render(keepPosition = false) {
   } else {
     const page = {today: todayScreen, journal: journalScreen, stats: statsScreen, settings: settingsScreen};
     content.innerHTML = (page[screen] || todayScreen)();
+    if (screen === 'journal' || screen === 'today') stopPreviews = observePreviews(content, journal.activities);
     if (screen === 'settings') {
       header.innerHTML = back('Маршрут', 'today');
       header.classList.add('subpage');
@@ -528,6 +572,7 @@ document.addEventListener('click', event => {
     case 'import-journal': document.querySelector('#journal-file').click(); break;
     case 'locate': locate(); break;
     case 'start': startGPS(); break;
+    case 'fit-workout': map?.fit(); break;
     case 'stop': finishGPS(); break;
     case 'undo': draft.points.pop(); planRoute(); break;
     case 'retry-route': planRoute(); break;
